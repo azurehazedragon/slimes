@@ -1,7 +1,13 @@
 use bevy::{
-    asset::RenderAssetUsages, camera::Viewport, color::palettes::basic::PURPLE, ecs::world, input::mouse::AccumulatedMouseScroll, math::ops::powf, mesh::Indices, prelude::{Mesh, *}, render::{
-        RenderPlugin, render_resource::{PrimitiveTopology, WgpuFeatures}, settings::WgpuSettings,
-    }
+    dev_tools::fps_overlay::{FpsOverlayConfig, FpsOverlayPlugin, FrameTimeGraphConfig},
+    text::FontSmoothing,
+    asset::RenderAssetUsages, 
+    camera::Viewport, 
+    input::mouse::AccumulatedMouseScroll, 
+    math::{ops::powf}, 
+    mesh::Indices, 
+    prelude::{Mesh, *}, 
+    render::render_resource::PrimitiveTopology,
 };
 
 use hexx::*;
@@ -12,7 +18,34 @@ const WORLD_SIZE: u32 = 16;
 
 fn main() {
     App::new()
-        .add_plugins(DefaultPlugins.set(ImagePlugin::default_nearest()))
+        .add_plugins((
+            DefaultPlugins.set(ImagePlugin::default_nearest()),
+            FpsOverlayPlugin { 
+            config: FpsOverlayConfig {
+                    text_config: TextFont {
+                        // Here we define size of our overlay
+                        font_size: 42.,
+                        // If we want, we can use a custom font
+                        font: default(),
+                        // We could also disable font smoothing,
+                        font_smoothing: FontSmoothing::default(),
+                        ..default()
+                    },
+                    // We can also change color of the overlay
+                    text_color: Color::srgb(1.0, 1.0, 1.0),
+                    // We can also set the refresh interval for the FPS counter
+                    refresh_interval: core::time::Duration::from_millis(100),
+                    enabled: true,
+                    frame_time_graph_config: FrameTimeGraphConfig {
+                        enabled: true,
+                        // The minimum acceptable fps
+                        min_fps: 30.0,
+                        // The target fps
+                        target_fps: 144.0,
+                    },
+                },
+            },
+        ))
         .add_systems(Startup, (setup_world_layout, setup).chain())
         .add_systems(Update, controls)
         .add_systems(Update, animate_sprite)
@@ -35,13 +68,22 @@ impl HexPosition {
 }
     
 
-#[derive(Component, Deref, DerefMut)]
-struct AnimationTimer(Timer);
+#[derive(Component)]
+struct AnimationTimer {
+    timer: Timer,
+    // Number of steps it will take to reach the destination
+    distance: f32,
+    // Amount to move each step
+    step_size: f32,
+    // Directino to move in to get to the destination
+    direction: Vec2,
+}
 
 #[derive(Component, PartialEq)]
 enum MoveState {
     Idle,
     Jump,
+    Jumping,
     Moving,
     Land,
 }
@@ -51,33 +93,57 @@ impl MoveState {
         match self {
             MoveState::Idle => (0, 4),
             MoveState::Jump => (5, 5),
+            MoveState::Jumping => (7, 7),
             MoveState::Moving => (6, 6),
-            MoveState::Land => (7, 8),
+            MoveState::Land => (8, 8),
         }
     }
+}
+
+fn get_new_hex_direction() -> EdgeDirection {
+    let mut rng = rand::rng();
+
+    let directions = [ 
+        EdgeDirection::FLAT_TOP,
+        EdgeDirection::FLAT_TOP_RIGHT,
+        EdgeDirection::FLAT_BOTTOM_RIGHT,
+        EdgeDirection::FLAT_BOTTOM,
+        EdgeDirection::FLAT_BOTTOM_LEFT,
+        EdgeDirection::FLAT_TOP_LEFT,
+    ];
+
+    directions[rng.random_range(0..directions.len())]
 }
 
 fn move_slimes(
     time: Res<Time>,
     world_layout: Res<WorldHexLayout>,
-    mut query: Query<(&mut Transform, &mut HexPosition, &mut MoveState)>
+    mut query: Query<(&mut Transform, &mut HexPosition, &mut MoveState, &mut AnimationTimer)>
 ) {
-    let mut rng = rand::rng();
 
-    for(mut transform, mut hex_position, mut move_state) in &mut query {
+    for(mut transform, mut hex_position, mut move_state, mut animation_timer) in &mut query {
         if *move_state == MoveState::Jump {
-            hex_position.0 += hex(rng.random_range(-1..2),rng.random_range(-1..2));
-            *move_state = MoveState::Moving;
+            let origin = hex_position.get_world_pos(&world_layout.layout);
+            hex_position.0 = hex_position.0.neighbor(get_new_hex_direction());
+           let dest = hex_position.get_world_pos(&world_layout.layout);
+
+            animation_timer.distance = 0.02;
+            animation_timer.step_size = origin.distance(dest) / animation_timer.distance;
+            animation_timer.direction = (dest - origin).normalize();
+
+            *move_state = MoveState::Moving
         }
-        else if *move_state == MoveState::Moving {
-            let dest = hex_position.get_world_pos(&world_layout.layout);
-            if vec2(transform.translation.x, transform.translation.y).distance(dest) > 128.0 {
-                transform.translation += (vec3(dest.x, dest.y, 1.)/10.0) * time.delta_secs();
-            }
-            else {
-                transform.translation = vec3(dest.x, dest.y, 1.);
-                *move_state = MoveState::Land;
-            }
+        else if *move_state == MoveState::Moving{
+                let delta = time.delta().as_secs_f32();
+                animation_timer.distance -= delta;
+                if animation_timer.step_size != 0. {
+                    let v = animation_timer.direction * (animation_timer.step_size * delta);
+                    transform.translation += vec3(v.x ,v.y, 0.);
+                }
+
+                if animation_timer.distance <= 0. { 
+                    *move_state = MoveState::Land;
+                }
         }
         else {
             let pos = hex_position.get_world_pos(&world_layout.layout);
@@ -91,15 +157,25 @@ fn animate_sprite(
     mut query: Query<(&mut MoveState, &mut AnimationTimer, &mut Sprite)>,
 ) {
     for (mut move_state, mut timer, mut sprite) in &mut query {
-        timer.tick(time.delta());
+        let mut rng = rand::rng();
 
-        if timer.just_finished()
+        timer.timer.tick(time.delta());
+
+        if timer.timer.just_finished()
             && let Some(atlas) = &mut sprite.texture_atlas
         {
             let (_, last_index) = move_state.get_sprite_indices();
             atlas.index = if atlas.index == last_index {
                 if *move_state == MoveState::Idle {
-                    *move_state = MoveState::Jump;
+                    if rng.random_bool(0.9) {
+                        *move_state = MoveState::Jump;
+                    }
+                }
+                else if *move_state == MoveState::Jump {
+                    *move_state = MoveState::Jumping;
+                }
+                else if *move_state == MoveState::Jumping {
+                    *move_state = MoveState::Moving;
                 }
                 else if *move_state == MoveState::Land {
                     *move_state = MoveState::Idle;
@@ -184,7 +260,7 @@ fn get_hex_tex(atlas_layout: &TextureAtlasLayout, hex_texure_index: usize) -> UV
     UVOptions::new().with_rect(
         uv_min / atlas_layout.size.as_vec2(),
         uv_max / atlas_layout.size.as_vec2(),
-    )
+    ).flip_v()
 }
 
 fn setup_world_layout (
@@ -206,9 +282,9 @@ fn setup(
     layout: Res<WorldHexLayout>,
 ) {
     let slime_spritesheet = asset_server.load("slime/slime_spritesheet.png");
-    let hex_tilesheet = asset_server.load("hex/hex_terrain.png");
+    let hex_tilesheet_grass = asset_server.load("hex/terrain_grass.png");
     let slime_layout = TextureAtlasLayout::from_grid(UVec2::splat(32), 9, 1, None, None);
-    let hex_layout = TextureAtlasLayout::from_grid(UVec2::splat(128), 3, 4, None, None);
+    let hex_layout = TextureAtlasLayout::from_grid(UVec2::splat(125), 5, 5, Some(UVec2{x: 5, y: 5}), None);
     let slime_atlas_layout = texture_atlas_layouts.add(slime_layout);
 
     commands.spawn((
@@ -223,10 +299,9 @@ fn setup(
 
     let world_grid = Hex::ZERO.range(WORLD_SIZE);
     
-    let hex_material = materials.add(hex_tilesheet);
+    let hex_material = materials.add(hex_tilesheet_grass);
 
     for chunk in world_grid {
-        let hex_tex_index = rng.random_range(0..6);
         let center = chunk.to_higher_res(HEX_SIZE);
         let children = center.range(HEX_SIZE);
 
@@ -234,7 +309,7 @@ fn setup(
             .map(|hex| {
                 PlaneMeshBuilder::new(&layout.layout)
                     .at(hex)
-                    .with_uv_options(get_hex_tex(&hex_layout, hex_tex_index))
+                    .with_uv_options(get_hex_tex(&hex_layout, rng.random_range(0..3)))
                     .build()
             })
             .reduce(|mut acc, mesh| {
@@ -249,6 +324,7 @@ fn setup(
         ));
     }
 
+    for _i in 0..5 {
     commands.spawn((
         Sprite {
             image: slime_spritesheet.clone(),
@@ -256,13 +332,14 @@ fn setup(
                 layout: slime_atlas_layout.clone(),
                 index: 0,
             }),
-            color: Color::srgba(0.7, 0.1, 0.2, 0.85),
-            custom_size: Some(Vec2::splat(128.)),
+            color: Color::srgba(f32::from(rng.random_bool(0.5)), f32::from(rng.random_bool(0.5)), f32::from(rng.random_bool(0.5)), 0.85),
+            custom_size: Some(Vec2::splat(200.)),
             ..default()
         },
         HexPosition(Hex::ZERO),
         Transform::default(),
         MoveState::Idle,
-        AnimationTimer(Timer::from_seconds(0.2, TimerMode::Repeating)),
+        AnimationTimer {timer: Timer::from_seconds(0.01, TimerMode::Repeating), step_size: 0., distance: 0., direction: vec2(0., 0.)},
     ));
+    }
 }
