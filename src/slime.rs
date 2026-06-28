@@ -1,7 +1,20 @@
 use bevy::prelude::*;
 use rand::*;
+use hexx::*;
 
 use crate::world::{WorldHexLayout, HexPosition, get_new_hex_direction}; 
+
+pub struct SlimePlugin;
+
+impl Plugin for SlimePlugin {
+    fn build(&self, app: &mut App) {
+        app.add_systems(Startup, setup_slimes)
+            .add_systems(Update, 
+                (move_slimes,
+                animate_sprite)
+            );
+    }
+}
 
 #[derive(Component)]
 pub struct AnimationTimer {
@@ -16,7 +29,7 @@ pub struct AnimationTimer {
 
 #[derive(Component, PartialEq)]
 pub enum MoveState {
-    Idle,
+   Idle,
     Jump,
     Jumping,
     Moving,
@@ -107,5 +120,39 @@ pub fn animate_sprite(
                 atlas.index + 1
             };
         }
+    }
+}
+
+pub fn setup_slimes(
+    mut commands: Commands,
+    mut texture_atlas_layouts: ResMut<Assets<TextureAtlasLayout>>,
+    asset_server: Res<AssetServer>,
+    ) {
+
+    info!("Setting up slimes");
+
+    let slime_spritesheet = asset_server.load("slime/slime_spritesheet.png");
+    let slime_layout = TextureAtlasLayout::from_grid(UVec2::splat(32), 9, 1, None, None);
+    let slime_atlas_layout = texture_atlas_layouts.add(slime_layout);
+
+    let mut rng = rand::rng();
+
+    for _ in 0..5 {
+    commands.spawn((
+        Sprite {
+            image: slime_spritesheet.clone(),
+            texture_atlas: Some(TextureAtlas {
+                layout: slime_atlas_layout.clone(),
+                index: 0,
+            }),
+            color: Color::srgba(f32::from(rng.random_bool(0.5)), f32::from(rng.random_bool(0.5)), f32::from(rng.random_bool(0.5)), 0.85),
+            custom_size: Some(Vec2::splat(200.)),
+            ..default()
+        },
+        HexPosition(Hex::ZERO),
+        Transform::default(),
+        MoveState::Idle,
+        AnimationTimer {timer: Timer::from_seconds(0.2, TimerMode::Repeating), step_size: 0., distance: 0., direction: vec2(0., 0.)},
+    ));
     }
 }

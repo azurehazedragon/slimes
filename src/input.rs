@@ -1,5 +1,13 @@
 use super::*;
 
+pub struct InputPlugin;
+
+impl Plugin for InputPlugin {
+    fn build(&self, app: &mut App) {
+        app.add_systems(Update, controls);
+    }
+}
+
 pub fn controls(
     camera_query: Single<(&mut Camera, &mut Transform, &mut Projection)>,
     window: Single<&Window>,

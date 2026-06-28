@@ -2,7 +2,6 @@ mod setup;
 mod input;
 mod slime;
 mod world;
-mod hex;
 
 use bevy::{
     dev_tools::fps_overlay::{
@@ -13,23 +12,44 @@ use bevy::{
     text::FontSmoothing,
     input::mouse::AccumulatedMouseScroll, 
     math::{ops::powf}, 
+    camera::Viewport,
     prelude::*, 
 };
 
 use crate::{
-    input::controls,
-    setup::{setup}, 
-    world::{setup_world_layout},
-    slime::{animate_sprite, move_slimes},
+    world::WorldPlugin,
+    slime::SlimePlugin,
+    input::InputPlugin,
 };
 
 fn main() {
     App::new()
         .add_plugins((
             DefaultPlugins.set(ImagePlugin::default_nearest()),
-            FpsOverlayPlugin { 
-            config: FpsOverlayConfig {
-                    text_config: TextFont {
+            FpsOverlayPlugin { config: fps_counter_config() },
+            WorldPlugin,
+            SlimePlugin,
+            InputPlugin,
+        ))
+        .add_systems(Startup, setup_camera)
+        .run();
+}
+
+fn setup_camera(mut commands: Commands) {
+    info!("Setting up camera");
+
+    commands.spawn((
+        Camera2d,
+        Camera {
+            viewport: Some(Viewport { ..default() }),
+            ..default()
+        },
+    ));
+}
+
+fn fps_counter_config() -> FpsOverlayConfig {
+FpsOverlayConfig {
+    text_config: TextFont {
                         // Here we define size of our overlay
                         font_size: 42.,
                         // If we want, we can use a custom font
@@ -37,7 +57,7 @@ fn main() {
                         // We could also disable font smoothing,
                         font_smoothing: FontSmoothing::default(),
                         ..default()
-                    },
+    },
                     // We can also change color of the overlay
                     text_color: Color::srgb(1.0, 1.0, 1.0),
                     // We can also set the refresh interval for the FPS counter
@@ -49,13 +69,6 @@ fn main() {
                         min_fps: 30.0,
                         // The target fps
                         target_fps: 240.0,
-                    },
-                },
-            },
-        ))
-        .add_systems(Startup, (setup_world_layout, setup).chain())
-        .add_systems(Update, controls)
-        .add_systems(Update, animate_sprite)
-        .add_systems(Update, move_slimes)
-        .run();
+        },
+    }
 }
