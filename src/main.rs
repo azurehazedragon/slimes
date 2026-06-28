@@ -23,7 +23,6 @@ use crate::{
     slime::{animate_sprite, move_slimes},
 };
 
-
 fn main() {
     App::new()
         .add_plugins((

@@ -81,7 +81,7 @@ pub fn setup(
         HexPosition(Hex::ZERO),
         Transform::default(),
         MoveState::Idle,
-        AnimationTimer {timer: Timer::from_seconds(0.01, TimerMode::Repeating), step_size: 0., distance: 0., direction: vec2(0., 0.)},
+        AnimationTimer {timer: Timer::from_seconds(0.2, TimerMode::Repeating), step_size: 0., distance: 0., direction: vec2(0., 0.)},
     ));
     }
 }

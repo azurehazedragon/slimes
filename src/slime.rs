@@ -1,4 +1,7 @@
 use bevy::prelude::*;
+use rand::*;
+
+use crate::{world::{WorldHexLayout, HexPosition}, hex::get_new_hex_direction};
 
 #[derive(Component)]
 pub struct AnimationTimer {
@@ -44,7 +47,7 @@ pub fn move_slimes(
             hex_position.0 = hex_position.0.neighbor(get_new_hex_direction());
            let dest = hex_position.get_world_pos(&world_layout.layout);
 
-            animation_timer.distance = 0.02;
+            animation_timer.distance = 0.3;
             animation_timer.step_size = origin.distance(dest) / animation_timer.distance;
             animation_timer.direction = (dest - origin).normalize();
 
