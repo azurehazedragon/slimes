@@ -6,6 +6,9 @@ use crate::world::{WorldHexLayout, HexPosition, get_new_hex_direction};
 
 pub struct SlimePlugin;
 
+const SLIME_JUMP_DISTANCE: f32 = 0.3;
+const SLIME_ANIMATION_DELAY: f32 = 0.2;
+
 impl Plugin for SlimePlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(Startup, setup_slimes)
@@ -60,7 +63,7 @@ pub fn move_slimes(
             hex_position.0 = hex_position.0.neighbor(get_new_hex_direction());
            let dest = hex_position.get_world_pos(&world_layout.layout);
 
-            animation_timer.distance = 0.3;
+            animation_timer.distance = SLIME_JUMP_DISTANCE;
             animation_timer.step_size = origin.distance(dest) / animation_timer.distance;
             animation_timer.direction = (dest - origin).normalize();
 
@@ -89,8 +92,9 @@ pub fn animate_sprite(
     time: Res<Time>,
     mut query: Query<(&mut MoveState, &mut AnimationTimer, &mut Sprite)>,
 ) {
+    let mut rng = rand::rng();
+
     for (mut move_state, mut timer, mut sprite) in &mut query {
-        let mut rng = rand::rng();
 
         timer.timer.tick(time.delta());
 
@@ -152,7 +156,7 @@ pub fn setup_slimes(
         HexPosition(Hex::ZERO),
         Transform::default(),
         MoveState::Idle,
-        AnimationTimer {timer: Timer::from_seconds(0.2, TimerMode::Repeating), step_size: 0., distance: 0., direction: vec2(0., 0.)},
+        AnimationTimer {timer: Timer::from_seconds(SLIME_ANIMATION_DELAY, TimerMode::Repeating), step_size: 0., distance: 0., direction: vec2(0., 0.)},
     ));
     }
 }
