@@ -5,8 +5,12 @@ use bevy::{
 
 use hexx::*;
 use crate::{
-    hex::{get_hex_tex, hexagonal_mesh},
-    world::{WorldHexLayout, HexPosition},
+    world::{
+            WorldHexLayout, 
+            HexPosition, 
+            get_hex_tex, 
+            hexagonal_mesh
+    },
     slime::{AnimationTimer, MoveState},
 };
 

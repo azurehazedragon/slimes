@@ -1,7 +1,7 @@
 use bevy::prelude::*;
 use rand::*;
 
-use crate::{world::{WorldHexLayout, HexPosition}, hex::get_new_hex_direction};
+use crate::world::{WorldHexLayout, HexPosition, get_new_hex_direction}; 
 
 #[derive(Component)]
 pub struct AnimationTimer {
